@@ -86,3 +86,5 @@ echo "aaa" >> myfile
 echo "bbb" >> myfile
 funwithParam a b c 1 2 3 >> myfile
 EOF
+
+echo "P1: $1"
