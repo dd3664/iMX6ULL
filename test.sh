@@ -83,7 +83,7 @@ echo "$1"
 
 :<< EOF
 echo "aaa" >> myfile
-echo "bbb" >> myfile
+echo "bbc" >> myfile
 funwithParam a b c 1 2 3 >> myfile
 EOF
 
