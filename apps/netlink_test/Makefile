@@ -21,7 +21,7 @@ $(EXECUTABLE): $(OBJECTS)
 	$(CC) $(LDFLAGS) $^ -o $@
 
 # 编译源文件生成目标文件
-$(OBJECTS):$(SOURCES)
+$(OBJDIR)/%.o: $(SRCDIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # 清理生成的文件
