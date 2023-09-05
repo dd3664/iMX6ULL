@@ -17,6 +17,7 @@ static int __init hash_test_init(void)
     HASHTEST *found;
     int id_to_find = 42;
 
+    printk(KERN_INFO "hash_test_init, size of the hashtable is: %d\n", HASH_SIZE(student_table));
     //创建学生记录
     s = kmalloc(sizeof(HASHTEST), GFP_KERNEL);
     if (!s)
@@ -50,8 +51,11 @@ static void __exit hash_test_exit(void)
     //遍历哈希表并释放内存
     hash_for_each_safe(student_table, bkt, s, tmp, hnode)
     {
-        hash_del(&s->hnode);
-        kfree(s);
+        if (s != NULL)
+        {
+            hash_del(&s->hnode);
+            kfree(s);
+        }
     }
 }
 
