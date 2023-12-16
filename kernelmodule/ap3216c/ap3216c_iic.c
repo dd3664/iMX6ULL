@@ -267,7 +267,7 @@ static int ap3216c_probe(struct i2c_client *client, const struct i2c_device_id *
 	}
 
 	/* 创建设备 */
-	ap3216cdev.devid = device_create(ap3216cdev.class, NULL, ap3216cdev.devid, NULL, AP3216C_NAME);
+	ap3216cdev.device = device_create(ap3216cdev.class, NULL, ap3216cdev.devid, NULL, AP3216C_NAME);
 	if (IS_ERR(ap3216cdev.device))
 	{
 		return PTR_ERR(ap3216cdev.device);
