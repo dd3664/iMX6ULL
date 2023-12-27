@@ -41,13 +41,13 @@ static int __init cpu_stat_init(void)
 {
 	struct task_struct *task;
 	char cmd[64] = {0};
-	/*
+	
 	//初始化kprobe结构
     kp.pre_handler = handler_pre;
-    kp.symbol_name = "__kmalloc"; // 要跟踪的内核函数名
+    kp.symbol_name = "do_exit"; // 要跟踪的内核函数名
 
     //注册kprobe
-    register_kprobe(&kp); */
+    register_kprobe(&kp); 
 
 	get_cmdline_fn = (int (*)(struct task_struct *, char *, int)) kallsyms_lookup_name("get_cmdline");
 	for_each_process(task)
@@ -68,7 +68,7 @@ static int __init cpu_stat_init(void)
 static int __exit cpu_stat_exit(void)
 {
 	printk("Module unloaded\n");
-	//unregister_kprobe(&kp);
+	unregister_kprobe(&kp);
 	return 0;
 }
 
