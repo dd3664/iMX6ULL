@@ -49,7 +49,7 @@ static void __exit hash_test_exit(void)
     HASHTEST *tmp;
     int bkt;
     //遍历哈希表并释放内存
-    hash_for_each_safe(student_table, bkt, s, tmp, hnode)
+    hash_for_each_safe(student_table, bkt, tmp, s, hnode)
     {
         if (s != NULL)
         {
