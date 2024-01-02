@@ -3,21 +3,7 @@
 /****************************************************************************************************/
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/kprobes.h>
-#include <linux/slab.h>
-#include <linux/mm.h>
-#include <linux/pagemap.h>
-#include <asm-generic/cacheflush.h>
-#include <linux/proc_fs.h>
-#include <linux/seq_file.h>
-#include <linux/string.h>
-#include <linux/list.h>
-#include <linux/list_sort.h>
-#include <linux/hashtable.h>
-#include <linux/kallsyms.h>
-#include <linux/kernel_stat.h>
 #include <linux/tick.h>
-#include <linux/version.h>
 #include <linux/spinlock.h>
 /****************************************************************************************************/
 /*                                           DEFINES                                                */
@@ -25,49 +11,51 @@
 typedef struct {
 	struct timer_list timer;
 	spinlock_t timer_lock;
+	int interval_msecs;
 	int count;
-} TIMER;
+} MY_TIMER;
 /****************************************************************************************************/
 /*                                           VARIABLES                                              */
 /****************************************************************************************************/
-TIMER l_timer;
+MY_TIMER l_timer;
 
 /****************************************************************************************************/
 /*                                       STATIC FUNCTIONS                                           */
 /****************************************************************************************************/
-static void timer_callback(TIMER *timer)
+static void timer_callback(MY_TIMER *mytimer)
 {
 	//获取自旋锁并禁用本地中断
-	spin_lock_irq(&timer->timer_lock);
+	spin_lock_irq(&mytimer->timer_lock);
 
 	//定时器到期执行的操作
 	printk("Timer expired!\n");
 
 	//重新设置定时器
-	if (0 != --timer->count)
+	if (0 != --mytimer->count)
 	{
-		mod_timer(&timer->timer, jiffies + msecs_to_jiffies(1000));
+		mod_timer(&mytimer->timer, jiffies + msecs_to_jiffies(mytimer->interval_msecs));
 	}
 
 	//释放自旋锁并重新启用本地中断
-	spin_unlock_irq(&timer->timer_lock);
+	spin_unlock_irq(&mytimer->timer_lock);
 }
 
-static void init_timer_with_parameters(TIMER *timer, int interval_msecs, int count, void (*callback)(TIMER *timer))
+static void init_timer_with_parameters(MY_TIMER *mytimer, int interval_msecs, int count, void (*callback)(MY_TIMER *mytimer))
 {
-	timer->count = count;
+	mytimer->count = count;
+	mytimer->interval_msecs = interval_msecs;
 
 	//初始化自旋锁
-	spin_lock_init(&timer->timer_lock);
+	spin_lock_init(&mytimer->timer_lock);
 
 	//初始化定时器
-	init_timer(&timer->timer);
+	init_timer(&mytimer->timer);
 
-	timer->timer.function = callback;
-	timer->timer.expires = jiffies + msecs_to_jiffies(interval_msecs);
-	timer->timer.data = timer;
+	mytimer->timer.function = callback;
+	mytimer->timer.expires = jiffies + msecs_to_jiffies(interval_msecs);
+	mytimer->timer.data = mytimer;
 
-	add_timer(timer);
+	add_timer(&mytimer->timer);
 }
 
 
@@ -76,7 +64,7 @@ static void init_timer_with_parameters(TIMER *timer, int interval_msecs, int cou
 /****************************************************************************************************/
 int __init timer_test_init(void)
 {
-	init_timer_with_parameters(&l_timer, 1000, 10, timer_callback);
+	init_timer_with_parameters(&l_timer, 200, 5, timer_callback);
 
 	return 0;	
 }
