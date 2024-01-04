@@ -3,6 +3,12 @@
 # Name of the kernel module
 MODULE_NAME := workqueue_test
 
+# Src
+SRC_FILES := 
+
+# Obj
+OBJ_FILES := $(patsubst %.c,%.o,$(SRC_FILES))
+
 # Path to the kernel source directory
 KERNEL_SRC := /home/dong/Project/iMX6ULL/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga
 
@@ -20,6 +26,7 @@ EXTRA_CFLAGS :=
 
 # Kernel module object files
 obj-m += $(MODULE_NAME).o
+$(MODULE_NAME)-objs := $(OBJ_FILES)
 
 # Build target
 all:
