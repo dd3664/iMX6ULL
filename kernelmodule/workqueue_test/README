@@ -1,0 +1,2 @@
+workqueue使用示例，结合内核定时器。
+由于workqueue运行在进程上下文，可在workqueue中执行会导致休眠的操作
