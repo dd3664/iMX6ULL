@@ -42,7 +42,8 @@ static void timer_callback(MY_TIMER *mytimer)
 	printk("Timer expired!\n");
 
 	l_workqueue.parameter = 10; //workqueue传参示例
-	queue_work(l_workqueue.workqueue, &l_workqueue.work); //将工作项添加到工作队列中
+	queue_work(l_workqueue.workqueue, &l_workqueue.work); //将工作项添加到自定义工作队列中
+	//schedule_work(&l_workqueue.work); //添加工作项到系统默认工作队列中，与queue_work择其一即可
 
 	//重新设置定时器
 	if (0 != --mytimer->count)

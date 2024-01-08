@@ -1,2 +1,3 @@
 workqueue使用示例，结合内核定时器。
+queue_work用于将工作项添加到自定义工作队列，schedule_work用于将工作项添加到系统默认工作队列
 由于workqueue运行在进程上下文，可在workqueue中执行会导致休眠的操作
