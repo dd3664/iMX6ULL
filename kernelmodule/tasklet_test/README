@@ -1,0 +1,3 @@
+tasklet使用示例
+使用DECLARE_TASKLET声明tasklet，使用tasklet_kill销毁tasklet
+tasklet运行与软中断上下文，其处理函数中不可包含休眠操作
