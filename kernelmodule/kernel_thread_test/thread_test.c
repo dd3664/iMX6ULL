@@ -21,18 +21,19 @@ MY_TIMER l_timer;
 static struct task_struct *my_thread;
 DECLARE_WAIT_QUEUE_HEAD(my_wait_queue); //定义等待队列头
 
-static bool l_wake_up = false; //等待条件
+static bool l_condition = false; //等待条件
 /****************************************************************************************************/
 /*                                       STATIC FUNCTIONS                                           */
 /****************************************************************************************************/
 static int my_thread_func(void *data)
 {
-	while (!kthread_should_stop()) //检查是否有停止请求
+	while (!kthread_should_stop())
 	{
-		//wait_event(my_wait_queue, l_wake_up); //进程等待条件的发生
-		wait_event_interruptible(my_wait_queue, l_wake_up); //进程等待条件的发生，可以被信号中断
+		//wait_event(my_wait_queue, l_condition); //等待被唤醒
+		//wait_event_interruptible(my_wait_queue, l_condition); //等待被唤醒，可以被信号中断
+		wait_event_interruptible_timeout(my_wait_queue, l_condition, msecs_to_jiffies(1000)); //等待被唤醒，超时后自动唤醒；
 		printk("My kernel thread is running...\n");
-		l_wake_up = false;
+		l_condition = false;
 	}
 	printk("My kernel thread is stoping...\n");
 	return 0;
@@ -43,7 +44,7 @@ static void timer_callback(MY_TIMER *mytimer)
 	//定时器到期执行的操作
 	printk("Timer expired!\n");
 
-	l_wake_up = true;
+	l_condition = true;
 	//wake_up(&my_wait_queue);
 	wake_up_interruptible(&my_wait_queue);
 
@@ -84,7 +85,7 @@ int __exit thread_test_exit(void)
 	del_timer_sync(&l_timer.timer);
 	if (my_thread)
 	{
-		l_wake_up = true;
+		l_condition = true;
 		kthread_stop(my_thread);
 		my_thread = NULL;
 	}
