@@ -10,6 +10,7 @@
 /*                                           DEFINES                                                */
 /****************************************************************************************************/
 #define FILE_PATH "/tmp/kernel_rw_test"
+#define MAX_LINE_LEN (128)
 #define MAX_BUF_LEN (128)
 /****************************************************************************************************/
 /*                                           VARIABLES                                              */
@@ -21,6 +22,7 @@
 /****************************************************************************************************/
 ssize_t kernel_read_file(const char *filename, char *buf, size_t len)
 {
+	char tmp_buf[MAX_LINE_LEN] = {0};
 	struct file *file;
 	mm_segment_t old_fs;
 	ssize_t ret;
@@ -38,9 +40,16 @@ ssize_t kernel_read_file(const char *filename, char *buf, size_t len)
 	set_fs(KERNEL_DS);
 
 	//读取文件内容
-	ret = vfs_read(file, buf, len, &file->f_pos);
+	while(ret = vfs_read(file, tmp_buf, len, &file->f_pos) > 0)
+	{
+		if (strlen(buf) + 1 >= len)
+		{
+			break;
+		}
+		memcpy(buf + strlen(buf), tmp_buf, len - strlen(buf) - 1);
+	}
 
-	//回复地址空间
+	//恢复地址空间
 	set_fs(old_fs);
 
 	//关闭文件
@@ -70,7 +79,7 @@ ssize_t kernel_write_file(const char *filename, const char *buf, size_t len)
 	//写入文件内容
 	ret = vfs_write(file, buf, len, &file->f_pos);
 
-	//回复地址空间
+	//恢复地址空间
 	set_fs(old_fs);
 
 	//关闭文件
@@ -90,7 +99,7 @@ int __init rw_test_init(void)
 	kernel_read_file(FILE_PATH, buf_read, MAX_BUF_LEN);
 	printk("buf_write: %s", buf_write);
 	printk("buf_read: %s", buf_read);
-
+	printk("buf_read length=%d\n", strlen(buf_read));
 	return 0;	
 }
 
