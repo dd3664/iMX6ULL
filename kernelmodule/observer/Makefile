@@ -1,7 +1,7 @@
 # Makefile for kernel module
 
 # Name of the kernel module
-MODULE_NAME := cpu_stat
+MODULE_NAME := observer
 
 # Src
 SRC_FILES := 
