@@ -1,0 +1,2 @@
+preempt_disable禁用内核抢占效果验证
+单核：直至preempt_enable之前，串口输入的ls等指令无法被响应；注释掉preempt_disable/preempt_enable，串口输入的ls等指令可被响应
