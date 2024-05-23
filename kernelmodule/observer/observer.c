@@ -3,7 +3,6 @@
 /****************************************************************************************************/
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/kprobes.h>
 #include <linux/slab.h>
 #include <linux/mm.h>
 #include <linux/pagemap.h>
@@ -29,8 +28,6 @@
 #ifndef arch_idle_time
 #define arch_idle_time(cpu) 0
 #endif
-
-typedef int (*pre_func)(struct kprobe *p, struct pt_regs *regs);
 
 typedef enum {
 	PROCESS_RUNNING,
@@ -137,7 +134,6 @@ typedef struct _exception_process_info {
 /*                                           VARIABLES                                              */
 /****************************************************************************************************/
 struct proc_dir_entry *l_proc_root_dir;
-struct kprobe kp;
 
 DECLARE_HASHTABLE(l_process_info_table, 16); /* 采样期间进程信息全局哈希表， 大小为2<<16，用于快速查找 */
 DECLARE_HASHTABLE(l_exception_process_info_table, 8); /* 存储异常进程信息 */
@@ -146,6 +142,7 @@ CPUINFO l_cpu_info;
 STAT_CONFIG l_stat_config;
 MONITOR_TIMER l_monitor_timer;
 
+extern int (*do_exit_observer_hook)(struct task_struct *task); 
 /****************************************************************************************************/
 /*                                       STATIC FUNCTIONS                                           */
 /****************************************************************************************************/
@@ -246,35 +243,6 @@ out_mm:
     mmput(mm);
 out:
 	return res;
-}
-
-
-static int kprobe_certain_func(const char *func_name, pre_func handler_pre)
-{
-	int ret = 0;
-	//初始化kprobe结构
-	memset(&kp, 0, sizeof(struct kprobe));
-    kp.pre_handler = handler_pre;
-    kp.symbol_name = func_name;
-
-    //注册kprobe
-    ret = register_kprobe(&kp);
-    if (ret < 0)
-    {
-        printk("Failed to register Kprobe.\n");
-        return -1;
-    }
-    return 0;
-}
-
-static int unkprobe_certain_func(const char *func_name)
-{
-	//卸载kprobe
-	if (0 == strcmp(kp.symbol_name, func_name))
-	{
-		unregister_kprobe(&kp);
-	}
-	return 0;
 }
 
 static u64 get_idle_time(int cpu)
@@ -858,9 +826,8 @@ static int stop_process_info(void)
 	return 0;
 }
 
-static int do_exit_handler_pre(struct kprobe *p, struct pt_regs *regs)
+static int do_exit_handler(struct task_struct *task)
 {
-	struct task_struct *task = current;
 	update_process_info(task, PROCESS_EXIT);
 	return 0;
 }
@@ -928,14 +895,15 @@ static int start_to_observe(void)
 	get_cpu_stat(&l_cpu_info.start_stat);
 	destroy_process_info();
 	init_process_info();
-	kprobe_certain_func("do_exit", do_exit_handler_pre);
+	BUG_ON(do_exit_observer_hook != NULL);
+	RCU_INIT_POINTER(do_exit_observer_hook, do_exit_handler);
 
 	return 0;
 }
 
 static int stop_to_observe(void)
 {
-	unkprobe_certain_func("do_exit");
+	RCU_INIT_POINTER(do_exit_observer_hook, NULL);
 	stop_process_info();
 	get_cpu_stat(&l_cpu_info.end_stat);
 	calculate_cpu_info(&l_cpu_info);
@@ -1255,6 +1223,7 @@ int __init observer_init(void)
 
 int __exit observer_exit(void)
 {
+	stop_to_observe();
 	destroy_process_info();
 	destroy_exception_process_info();
 	destroy_monitor_timer(&l_monitor_timer);

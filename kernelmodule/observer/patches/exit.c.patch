@@ -1,0 +1,26 @@
+diff --git a/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga/kernel/exit.c b/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga/kernel/exit.c
+index 22fcc05..e04a7f9 100644
+--- a/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga/kernel/exit.c
++++ b/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga/kernel/exit.c
+@@ -60,6 +60,8 @@
+ #include <asm/mmu_context.h>
+ 
+ static void exit_mm(struct task_struct *tsk);
++int (*do_exit_observer_hook)(struct task_struct *tsk) __rcu __read_mostly;
++EXPORT_SYMBOL(do_exit_observer_hook);
+ 
+ static void __unhash_process(struct task_struct *p, bool group_dead)
+ {
+@@ -653,6 +655,12 @@ static inline void check_stack_usage(void) {}
+ void do_exit(long code)
+ {
+ 	struct task_struct *tsk = current;
++	int (*observer_hook)(struct task_struct *tsk);
++	observer_hook = rcu_dereference(do_exit_observer_hook);
++	if (observer_hook)
++	{
++		observer_hook(tsk);
++	}
+ 	int group_dead;
+ 	TASKS_RCU(int tasks_rcu_i);
+ 
