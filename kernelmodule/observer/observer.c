@@ -394,7 +394,7 @@ static int insert_process_info(struct task_struct *task, CALLD_FROM calld_from)
 	strncpy(process_info->comm, task->comm, TASK_COMM_LEN);
 	get_cmd_line(task, process_info->params, PARM_LENTH);
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
-	process_info->start_time = task->real_start_time.tv_sec;
+	process_info->start_time = task->real_start_time.tv_sec; //start_time 记录的是进程从内核调度器的角度来看开始运行的时间; real_start_time 记录的是进程创建的实际时间，即从用户空间发起创建请求的时间
 #else
 	process_info->start_time = task->real_start_time;
 #endif
@@ -427,7 +427,7 @@ static int insert_process_info(struct task_struct *task, CALLD_FROM calld_from)
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
 		process_info->parent_task_hash_key = generate_hash_key_from_pid(task->real_parent->group_leader->pid, task->real_parent->group_leader->real_start_time.tv_sec); /* 先记录父进程hash_key，统计完成后再进行链表操作，避免子进程已结束而父进程未结束，导致子进程找不到父进程信息*/
 #else
-		process_info->parent_task_hash_key = generate_hash_key_from_pid(task->real_parent->group_leader->pid, task->real_parent->group_leader->start_time);
+		process_info->parent_task_hash_key = generate_hash_key_from_pid(task->real_parent->group_leader->pid, task->real_parent->group_leader->real_start_time);
 #endif
 		//printk("process_info->pid=%d, process_info->params=%s, task->real_parent->pid=%d, task->parent->pid=%d, task->parent->group_leader->pid=%d\n",process_info->pid, process_info->params, task->real_parent->pid, task->parent->pid, task->parent->group_leader->pid);
 
