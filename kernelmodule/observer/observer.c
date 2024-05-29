@@ -279,7 +279,7 @@ static u64 generate_hash_key_from_pid(pid_t pid, u64 start_time)
 
 static int generate_hash_key_form_name(char *comm, char *params)
 {
-	int ret;
+	int ret = 0;
 	int i;
 	char name[TASK_COMM_LEN + PARM_LENTH];
 
@@ -736,15 +736,17 @@ static int show_cpu_info_to_console(void)
 static void show_exception_info_to_console(void)
 {
 	EXCETION_PROCESS_INFO *excetion_process_info;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)	
 	EXCETION_PROCESS_INFO *tmp;
+#endif
 	int bkt;
+	struct hlist_node *tmp_hnode;
 	printk("---------------------------------------------------------EXCEPTION INFO---------------------------------------------------------\n");
 	printk("Item:    %-64s %-12s\n", "command", "counts");
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
-	struct hlist_node *tmp_hnode;
 	hash_for_each_safe(l_exception_process_info_table, bkt, tmp_hnode, tmp, excetion_process_info, hnode)
 #else 
-	hash_for_each_safe(l_exception_process_info_table, bkt, tmp, excetion_process_info, hnode)
+	hash_for_each_safe(l_exception_process_info_table, bkt, tmp_hnode, excetion_process_info, hnode)
 #endif
 	{
 		if (NULL != excetion_process_info)
@@ -787,13 +789,15 @@ static int destroy_process_info(void)
 static int destroy_exception_process_info(void)
 {
 	EXCETION_PROCESS_INFO *excetion_process_info;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
 	EXCETION_PROCESS_INFO *tmp;
+#endif
+	struct hlist_node *tmp_hnode;
 	int bkt;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
-	struct hlist_node *tmp_hnode;
 	hash_for_each_safe(l_exception_process_info_table, bkt, tmp_hnode, tmp, excetion_process_info, hnode)
 #else 
-	hash_for_each_safe(l_exception_process_info_table, bkt, tmp, excetion_process_info, hnode)
+	hash_for_each_safe(l_exception_process_info_table, bkt, tmp_hnode, excetion_process_info, hnode)
 #endif
 	{
 		if (NULL != excetion_process_info)
@@ -848,9 +852,9 @@ static void monitor_workqueue_callback(struct work_struct *wk)
 	return;
 }
 
-static void monitor_timer_callback(MONITOR_TIMER *monitor_timer)
+static void monitor_timer_callback(unsigned long data)
 {
-	
+	MONITOR_TIMER *monitor_timer = (MONITOR_TIMER *)data;	
 	queue_work(monitor_timer->wq, &monitor_timer->wk);
 	return;
 }
@@ -870,14 +874,14 @@ static void destroy_monitor_timer(MONITOR_TIMER *monitor_timer)
 	return;
 }
 
-static void add_monitor_timer(MONITOR_TIMER *monitor_timer, int interval_msecs, int count, void (*callback)(MONITOR_TIMER *monitor_timer))
+static void add_monitor_timer(MONITOR_TIMER *monitor_timer, int interval_msecs, int count, void (*callback)(unsigned long))
 {
 	monitor_timer->count = count;
 	monitor_timer->interval_msecs = interval_msecs;
 
 	monitor_timer->timer.function = callback;
 	monitor_timer->timer.expires = jiffies + msecs_to_jiffies(interval_msecs);
-	monitor_timer->timer.data = monitor_timer;
+	monitor_timer->timer.data = (unsigned long)monitor_timer;
 
 	add_timer(&monitor_timer->timer);
 	return;
@@ -950,7 +954,7 @@ static int observer_open(struct inode *inode, struct file *filp)
 	return ret;
 }
 
-static size_t proc_start_stop_wirte(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_start_stop_wirte(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char c;
 	if (get_user(c, buf))
@@ -977,7 +981,7 @@ static size_t proc_start_stop_wirte(struct file *filp, char __user *buf, size_t 
 	return size;
 }
 
-static size_t proc_monitor_period_wirte(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_monitor_period_wirte(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char kbuf[MAX_CMD_LEN];
 	char *pos;
@@ -993,7 +997,7 @@ static size_t proc_monitor_period_wirte(struct file *filp, char __user *buf, siz
 	return size;
 }
 
-static size_t proc_monitor_counts_wirte(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_monitor_counts_wirte(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char kbuf[MAX_CMD_LEN];
 	char *pos;
@@ -1009,7 +1013,7 @@ static size_t proc_monitor_counts_wirte(struct file *filp, char __user *buf, siz
 	return size;
 }
 
-static size_t proc_monitor_pid_wirte(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_monitor_pid_wirte(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char kbuf[MAX_CMD_LEN];
 	char *pos;
@@ -1025,7 +1029,7 @@ static size_t proc_monitor_pid_wirte(struct file *filp, char __user *buf, size_t
 	return size;
 }
 
-static size_t proc_monitor_process_name_wirte(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_monitor_process_name_wirte(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char kbuf[MAX_CMD_LEN];
 
@@ -1040,7 +1044,7 @@ static size_t proc_monitor_process_name_wirte(struct file *filp, char __user *bu
 	return size;
 }
 
-static size_t proc_threshold_of_cpu_occupy_wirte(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_threshold_of_cpu_occupy_wirte(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char kbuf[MAX_CMD_LEN];
 	char *pos;
@@ -1056,7 +1060,7 @@ static size_t proc_threshold_of_cpu_occupy_wirte(struct file *filp, char __user 
 	return size;
 }
 
-static size_t proc_show_process_info_wirte(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_show_process_info_wirte(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	pid_t show_pid;
 	char kbuf[MAX_CMD_LEN];
@@ -1083,7 +1087,7 @@ static size_t proc_show_process_info_wirte(struct file *filp, char __user *buf, 
 	return size;
 }
 
-static size_t proc_print_to_console_write(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_print_to_console_write(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char c;
 	if (get_user(c, buf))
@@ -1102,7 +1106,7 @@ static size_t proc_print_to_console_write(struct file *filp, char __user *buf, s
 	return size;
 }
 
-static size_t proc_show_exception_info_write(struct file *filp, char __user *buf, size_t size, loff_t *offt)
+static ssize_t proc_show_exception_info_write(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char c;
 	if (get_user(c, buf))
@@ -1221,14 +1225,14 @@ int __init observer_init(void)
 	return 0;	
 }
 
-int __exit observer_exit(void)
+void __exit observer_exit(void)
 {
 	stop_to_observe();
 	destroy_process_info();
 	destroy_exception_process_info();
 	destroy_monitor_timer(&l_monitor_timer);
 	destroy_proc();
-	return 0;
+	return;
 }
 
 module_init(observer_init);
