@@ -46,7 +46,7 @@ static int __init hash_test_init(void)
 static void __exit hash_test_exit(void)
 {
     HASHTEST *s;
-    HASHTEST *tmp;
+    struct hlist_node *tmp;
     int bkt;
     //遍历哈希表并释放内存
     hash_for_each_safe(student_table, bkt, tmp, s, hnode)
