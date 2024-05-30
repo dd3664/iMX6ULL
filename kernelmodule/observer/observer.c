@@ -780,6 +780,7 @@ static int destroy_process_info(void)
 	{
 		if (NULL != process_info)
 		{
+			list_del(&process_info->list_for_global);
 			kfree(process_info);
 		}
 	}
