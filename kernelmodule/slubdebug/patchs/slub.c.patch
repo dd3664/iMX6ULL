@@ -1,0 +1,45 @@
+diff --git a/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga/mm/slub.c b/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga/mm/slub.c
+index 08342c5..3bac6d0 100644
+--- a/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga/mm/slub.c
++++ b/kernel/linux-imx-rel_imx_4.1.15_2.1.0_ga/mm/slub.c
+@@ -115,6 +115,9 @@
+  * 			the fast path and disables lockless freelists.
+  */
+ 
++extern void trace_slub_alloc(const void *obj);
++extern void trace_slub_free(const void *obj);
++
+ static inline int kmem_cache_debug(struct kmem_cache *s)
+ {
+ #ifdef CONFIG_SLUB_DEBUG
+@@ -1248,12 +1251,14 @@ static inline void dec_slabs_node(struct kmem_cache *s, int node,
+  */
+ static inline void kmalloc_large_node_hook(void *ptr, size_t size, gfp_t flags)
+ {
++	trace_slub_alloc(ptr);
+ 	kmemleak_alloc(ptr, size, 1, flags);
+ 	kasan_kmalloc_large(ptr, size);
+ }
+ 
+ static inline void kfree_hook(const void *x)
+ {
++	trace_slub_free(x);
+ 	kmemleak_free(x);
+ 	kasan_kfree_large(x);
+ }
+@@ -1276,6 +1281,7 @@ static inline void slab_post_alloc_hook(struct kmem_cache *s,
+ {
+ 	flags &= gfp_allowed_mask;
+ 	kmemcheck_slab_alloc(s, flags, object, slab_ksize(s));
++	trace_slub_alloc(object);
+ 	kmemleak_alloc_recursive(object, s->object_size, 1, s->flags, flags);
+ 	memcg_kmem_put_cache(s);
+ 	kasan_slab_alloc(s, object);
+@@ -1283,6 +1289,7 @@ static inline void slab_post_alloc_hook(struct kmem_cache *s,
+ 
+ static inline void slab_free_hook(struct kmem_cache *s, void *x)
+ {
++	trace_slub_free(x);
+ 	kmemleak_free_recursive(x, s->flags);
+ 
+ 	/*
