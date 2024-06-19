@@ -193,13 +193,11 @@ static void __show_allocstack_info(ALLOCSTACK *allocstack)
 
 	trace.nr_entries = allocstack->trace_len;
 	trace.entries = allocstack->trace;
-	if (allocstack->hold >= g_config.thresh)
-	{
-		printk("===========================================================================================================================\n");
-		printk("total_alloc=%u, hold=%u\n", allocstack->total_alloc, allocstack->hold);
-		print_stack_trace(&trace, 4);
-		printk("\n");
-	}
+	printk("===========================================================================================================================\n");
+	printk("total_alloc=%u, hold=%u\n", allocstack->total_alloc, allocstack->hold);
+	print_stack_trace(&trace, 4);
+	printk("\n");
+	return;
 }
 
 static void __show_freestack_info(FREESTACK *freestack)
@@ -231,21 +229,22 @@ static void show_allocstack_info(void)
 	printk("---------------------------------------------------------STACK TRACE---------------------------------------------------------\n");
 	list_for_each_entry_safe(allocstack, tmptrace, &g_allocstack_list, list_for_global)
 	{
-		if (NULL != allocstack)
+		if (NULL != allocstack && allocstack->hold >= g_config.thresh)
 		{
 			__show_allocstack_info(allocstack);
-		}
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
-		hash_for_each_safe(allocstack->freestack, bkt, tmp_hnode, tmp_freestack, freestack, hnode)
+			hash_for_each_safe(allocstack->freestack, bkt, tmp_hnode, tmp_freestack, freestack, hnode)
 #else
-		hash_for_each_safe(allocstack->freestack, bkt, tmp_hnode, freestack, hnode)
+			hash_for_each_safe(allocstack->freestack, bkt, tmp_hnode, freestack, hnode)
 #endif
-		{
-			if (NULL != freestack)
 			{
-				__show_freestack_info(freestack);
+				if (NULL != freestack)
+				{
+					__show_freestack_info(freestack);
+				}
 			}
 		}
+
 	}
 	spin_unlock_irqrestore(&g_lock, flags);
 	return;
