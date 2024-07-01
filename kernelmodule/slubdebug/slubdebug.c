@@ -35,7 +35,7 @@ typedef struct __trace_obj {
     struct hlist_node hnode;
 } TRACEOBJ;
 
-typedef struct _dgbcfg {
+typedef struct __dgbcfg {
 	bool enable;
 	bool save_allstack; /* 保存所有调用栈，即使关联的内存对象已经完全释放 */
 	unsigned int thresh; /* 打印hold >= thresh的调用栈 */
@@ -44,7 +44,7 @@ typedef struct _dgbcfg {
 /*                                           VARIABLES                                              */
 /****************************************************************************************************/
 static struct proc_dir_entry *g_proc_root_dir;
-DBGCFG g_config = {
+static DBGCFG g_config = {
 	.enable = false,
 	.save_allstack = false,
 	.thresh = 10
@@ -428,6 +428,7 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	{
 		hash_del(&allocstack->hnode);
 		list_del(&allocstack->list);
+		kmem_cache_free(allocstack_cache, allocstack);
 	}
 	spin_unlock_irqrestore(&g_lock, flags);
     return;

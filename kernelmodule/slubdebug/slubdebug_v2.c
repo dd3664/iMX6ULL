@@ -43,28 +43,37 @@ typedef struct __trace_obj {
     struct hlist_node hnode;
 } TRACEOBJ;
 
-typedef struct _dgbcfg {
+typedef struct __dgbcfg {
 	bool enable;
 	bool save_allstack; /* 保存所有调用栈，即使关联的内存对象已经完全释放 */
 	bool save_freestack; /* 保存释放内存的调用栈 */
 	unsigned int thresh; /* 打印hold >= thresh的调用栈 */
+	unsigned int max_show; /* 打印的allocstack最大数量 */
 } DBGCFG;
+
+typedef struct __allocstack_queue {
+	struct list_head list;
+	unsigned int qlen;
+} ALLOCSTACK_QUEUE;
 /****************************************************************************************************/
 /*                                           VARIABLES                                              */
 /****************************************************************************************************/
 static struct proc_dir_entry *g_proc_root_dir;
-DBGCFG g_config = {
+static DBGCFG g_config = {
 	.enable = false,
 	.save_allstack = false,
 	.save_freestack = false,
-	.thresh = 10
+	.thresh = 10,
+	.max_show = 1000
 };
 
 DEFINE_SPINLOCK(g_lock);
 DECLARE_HASHTABLE(g_traceobj_table, 12);
 DECLARE_HASHTABLE(g_allocstack_table, 12);
-static struct list_head g_allocstack_list;
-
+static ALLOCSTACK_QUEUE g_allocstack_quene;
+bool g_initialized_flag = false;
+static unsigned int g_hold_allocstack = 0;
+static unsigned int g_hold_object = 0;
 /* alloccation caches for internal data */
 static struct kmem_cache *allocstack_cache;
 static struct kmem_cache *freestack_cache;
@@ -211,6 +220,7 @@ static void destroy_traceobj_table(void )
 		{
 			hash_del(&traceobj->hnode);
 			kmem_cache_free(traceobj_cache, traceobj);
+			g_hold_object--;
 		}
 	}
 	return;
@@ -233,9 +243,9 @@ static void destroy_allocstack_table(void )
         if (NULL != allocstack)
         {
             hash_del(&allocstack->hnode);
-			list_del(&allocstack->list);
 			destroy_freestack_table(allocstack->freestack);
             kmem_cache_free(allocstack_cache, allocstack);
+			g_hold_allocstack--;
         }
     }
 	return;
@@ -250,7 +260,6 @@ static void start_trace_obj(void)
 	destroy_allocstack_table();
 	hash_init(g_traceobj_table);
 	hash_init(g_allocstack_table);
-	INIT_LIST_HEAD(&g_allocstack_list);
 	g_config.enable = true;
 	spin_unlock_irqrestore(&g_lock, flags);
     return;
@@ -325,20 +334,36 @@ static void show_allocstack_info(void)
 {
 	ALLOCSTACK *allocstack = NULL;
 	ALLOCSTACK *tmpstack = NULL;
-	unsigned long flags;
-	
-	spin_lock_irqsave(&g_lock, flags);
-	list_sort(NULL, &g_allocstack_list, descending_by_hold);
+    struct hlist_node *tmp_hnode = NULL;
+    int bkt;
+
+	INIT_LIST_HEAD(&g_allocstack_quene.list);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
+    hash_for_each_safe(g_allocstack_table, bkt, tmp_hnode, tmpstack, allocstack, hnode)
+#else
+    hash_for_each_safe(g_allocstack_table, bkt, tmp_hnode, allocstack, hnode)
+#endif
+    {
+        if (NULL != allocstack && allocstack->hold >= g_config.thresh && g_allocstack_quene.qlen < g_config.max_show)
+        {
+			list_add_tail(&allocstack->list, &g_allocstack_quene.list);
+			g_allocstack_quene.qlen++;
+        }
+    }
+	list_sort(NULL, &g_allocstack_quene.list, descending_by_hold);
+
 	printk("=====================================================ALLOC STACK=====================================================\n");
-	list_for_each_entry_safe(allocstack, tmpstack, &g_allocstack_list, list)
+	printk("hold object=%u, hold allocstack=%u\n", g_hold_object, g_hold_allocstack);
+	list_for_each_entry_safe(allocstack, tmpstack, &g_allocstack_quene.list, list)
 	{
-		if (NULL != allocstack && allocstack->hold >= g_config.thresh)
+		if (NULL != allocstack)
 		{
 			__show_allocstack_info(allocstack);
+			list_del(&allocstack->list);
+			g_allocstack_quene.qlen--;
 		}
 
 	}
-	spin_unlock_irqrestore(&g_lock, flags);
 	return;
 }
 
@@ -435,6 +460,24 @@ static ssize_t proc_save_freestack_write(struct file *filp, const char __user *b
 	return size;
 }
 
+static ssize_t proc_max_show_write(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
+{
+	char kbuf[MAX_BUFER_LEN];
+	char *pos;
+
+	memset(kbuf, 0, sizeof(kbuf));
+	if (0 != copy_from_user(kbuf, buf, size))
+	{
+		printk("copy from user failed.\n");
+		return -1;
+	}
+	kbuf[size - 1] = '\0';
+	g_config.max_show = simple_strtol(kbuf, &pos, 0);
+	printk("g_config.max_show=%u\n", g_config.max_show);
+
+	return size;
+}
+
 static const struct file_operations proc_enable = {
 	.owner = THIS_MODULE,
 	.write = proc_enable_write
@@ -460,6 +503,11 @@ static const struct file_operations proc_save_freestack = {
 	.write = proc_save_freestack_write
 };
 
+static const struct file_operations proc_max_show = {
+	.owner = THIS_MODULE,
+	.write = proc_max_show_write
+};
+
 static void init_proc(void)
 {
     g_proc_root_dir = proc_mkdir("slubdebug", NULL);
@@ -468,6 +516,7 @@ static void init_proc(void)
 	proc_create("threshold", 0, g_proc_root_dir, &proc_thresh);
 	proc_create("save_allstack", 0, g_proc_root_dir, &proc_save_allstack);
 	proc_create("save_freestack", 0, g_proc_root_dir, &proc_save_freestack);
+	proc_create("max_show", 0, g_proc_root_dir, &proc_max_show);
     return;
 }
 
@@ -478,6 +527,7 @@ static void destroy_proc(void)
 	remove_proc_entry("threshold", g_proc_root_dir);
 	remove_proc_entry("save_allstack", g_proc_root_dir);
 	remove_proc_entry("save_freestack", g_proc_root_dir);
+	remove_proc_entry("show_max", g_proc_root_dir);
     remove_proc_entry("slubdebug", NULL);
     return;
 }
@@ -495,7 +545,7 @@ void trace_slub_alloc(const void *obj, size_t size, unsigned long cache_flags)
 	struct hlist_node *tmp_hnode;
 #endif
 
-	if (false == g_config.enable)
+	if (false == g_config.enable || false == g_initialized_flag)
 	{
 		return;
 	}
@@ -520,14 +570,15 @@ void trace_slub_alloc(const void *obj, size_t size, unsigned long cache_flags)
         allocstack->trace_len = trace_len;
         memcpy(allocstack->trace, trace, sizeof(trace));
         hash_add(g_allocstack_table, &allocstack->hnode, trace[trace_len - 1] + trace_len);
-		list_add_tail(&allocstack->list, &g_allocstack_list);
 		hash_init(allocstack->freestack);
+		g_hold_allocstack++;
     }
 
 	traceobj->allocstack = allocstack;
     allocstack->hold++;
 	allocstack->total_alloc++;
 	allocstack->hold_size += size;
+	g_hold_object++;
 	hash_add(g_traceobj_table, &traceobj->hnode, traceobj->addr);
 	spin_unlock_irqrestore(&g_lock, flags);
     return;
@@ -543,7 +594,7 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	unsigned int trace_len = 0;
 	unsigned long flags;
 
-	if (false == g_config.enable)
+	if (false == g_config.enable || false == g_initialized_flag)
 	{
 		return;
 	}
@@ -564,15 +615,17 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	allocstack->hold_size -= traceobj->size;
 	hash_del(&traceobj->hnode);
 	kmem_cache_free(traceobj_cache, traceobj);
+	g_hold_object--;
  
 	if (0 == allocstack->hold && false == g_config.save_allstack)
 	{
 		hash_del(&allocstack->hnode);
-		list_del(&allocstack->list);
 		if (g_config.save_freestack)
 		{
 			destroy_freestack_table(allocstack->freestack);
 		}
+		kmem_cache_free(allocstack_cache, allocstack);
+		g_hold_allocstack--;
 	}
 	else if (g_config.save_freestack)
 	{
@@ -599,6 +652,11 @@ int __init slubdebug_init(void)
 	allocstack_cache = KMEM_CACHE(__alloc_stack, SLAB_NOLEAKTRACE); //参考kmemleak，使用SLAB_NOLEAKTRACE标志，避免递归调用
 	freestack_cache = KMEM_CACHE(__free_stack, SLAB_NOLEAKTRACE);
 	traceobj_cache = KMEM_CACHE(__trace_obj, SLAB_NOLEAKTRACE);
+	if (true == g_config.enable)
+	{
+		start_trace_obj();
+	}
+	g_initialized_flag = true;
     return 0;
 }
 
