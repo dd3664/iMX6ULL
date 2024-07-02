@@ -15,8 +15,11 @@
 /****************************************************************************************************/
 /*                                           DEFINES                                                */
 /****************************************************************************************************/
-#define MAX_TRACE        16
-#define MAX_BUFER_LEN    8
+#define MAX_TRACE                     16
+#define MAX_BUFER_LEN                 8
+#define TRACEOBJ_HTABLE_SIZE          16   /* 1 << TRACEOBJ_HTABLE_SIZE */
+#define ALLOCSTACK_HTABLE_SIZE        12   /* 1 << ALLOCSTACK_HTABLE_SIZE */
+#define EACH_FREESTACK_HTABLE_SIZE    3    /* 1 << EACH_FREESTACK_HTABLE_SIZE */
 
 typedef struct __alloc_stack {
     unsigned long trace[MAX_TRACE];
@@ -26,7 +29,7 @@ typedef struct __alloc_stack {
 	unsigned int hold_size;
     struct list_head list;
     struct hlist_node hnode;
-	DECLARE_HASHTABLE(freestack, 3);
+	DECLARE_HASHTABLE(freestack, EACH_FREESTACK_HTABLE_SIZE);
 } ALLOCSTACK;
 
 typedef struct __free_stack {
@@ -60,7 +63,7 @@ typedef struct __allocstack_queue {
 /****************************************************************************************************/
 static struct proc_dir_entry *g_proc_root_dir;
 static DBGCFG g_config = {
-	.enable = false,
+	.enable = true,
 	.save_allstack = false,
 	.save_freestack = false,
 	.thresh = 10,
@@ -68,12 +71,13 @@ static DBGCFG g_config = {
 };
 
 DEFINE_SPINLOCK(g_lock);
-DECLARE_HASHTABLE(g_traceobj_table, 12);
-DECLARE_HASHTABLE(g_allocstack_table, 12);
+DECLARE_HASHTABLE(g_traceobj_table, TRACEOBJ_HTABLE_SIZE);
+DECLARE_HASHTABLE(g_allocstack_table, ALLOCSTACK_HTABLE_SIZE);
 static ALLOCSTACK_QUEUE g_allocstack_quene;
 bool g_initialized_flag = false;
 static unsigned int g_hold_allocstack = 0;
 static unsigned int g_hold_object = 0;
+static unsigned long g_hold_object_size = 0;
 /* alloccation caches for internal data */
 static struct kmem_cache *allocstack_cache;
 static struct kmem_cache *freestack_cache;
@@ -218,9 +222,10 @@ static void destroy_traceobj_table(void )
 	{
 		if (NULL != traceobj)
 		{
+			g_hold_object--;
+			g_hold_object_size -= traceobj->size;
 			hash_del(&traceobj->hnode);
 			kmem_cache_free(traceobj_cache, traceobj);
-			g_hold_object--;
 		}
 	}
 	return;
@@ -353,7 +358,7 @@ static void show_allocstack_info(void)
 	list_sort(NULL, &g_allocstack_quene.list, descending_by_hold);
 
 	printk("=====================================================ALLOC STACK=====================================================\n");
-	printk("hold object=%u, hold allocstack=%u\n", g_hold_object, g_hold_allocstack);
+	printk("hold object=%u, hold object size=%luB, hold allocstack=%u\n", g_hold_object, g_hold_object_size, g_hold_allocstack);
 	list_for_each_entry_safe(allocstack, tmpstack, &g_allocstack_quene.list, list)
 	{
 		if (NULL != allocstack)
@@ -362,7 +367,6 @@ static void show_allocstack_info(void)
 			list_del(&allocstack->list);
 			g_allocstack_quene.qlen--;
 		}
-
 	}
 	return;
 }
@@ -527,7 +531,7 @@ static void destroy_proc(void)
 	remove_proc_entry("threshold", g_proc_root_dir);
 	remove_proc_entry("save_allstack", g_proc_root_dir);
 	remove_proc_entry("save_freestack", g_proc_root_dir);
-	remove_proc_entry("show_max", g_proc_root_dir);
+	remove_proc_entry("max_show", g_proc_root_dir);
     remove_proc_entry("slubdebug", NULL);
     return;
 }
@@ -579,6 +583,7 @@ void trace_slub_alloc(const void *obj, size_t size, unsigned long cache_flags)
 	allocstack->total_alloc++;
 	allocstack->hold_size += size;
 	g_hold_object++;
+	g_hold_object_size += size;
 	hash_add(g_traceobj_table, &traceobj->hnode, traceobj->addr);
 	spin_unlock_irqrestore(&g_lock, flags);
     return;
@@ -613,9 +618,10 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	spin_lock_irqsave(&g_lock, flags);
 	allocstack->hold--;
 	allocstack->hold_size -= traceobj->size;
+	g_hold_object--;
+	g_hold_object_size -=  traceobj->size;
 	hash_del(&traceobj->hnode);
 	kmem_cache_free(traceobj_cache, traceobj);
-	g_hold_object--;
  
 	if (0 == allocstack->hold && false == g_config.save_allstack)
 	{

@@ -15,8 +15,10 @@
 /****************************************************************************************************/
 /*                                           DEFINES                                                */
 /****************************************************************************************************/
-#define MAX_TRACE        16
-#define MAX_BUFER_LEN    8
+#define MAX_TRACE                     16
+#define MAX_BUFER_LEN                 8
+#define TRACEOBJ_HTABLE_SIZE          16   /* 1 << TRACEOBJ_HTABLE_SIZE */
+#define ALLOCSTACK_HTABLE_SIZE        12   /* 1 << ALLOCSTACK_HTABLE_SIZE */
 
 typedef struct __alloc_stack {
     unsigned long trace[MAX_TRACE];
@@ -39,22 +41,32 @@ typedef struct __dgbcfg {
 	bool enable;
 	bool save_allstack; /* 保存所有调用栈，即使关联的内存对象已经完全释放 */
 	unsigned int thresh; /* 打印hold >= thresh的调用栈 */
+	unsigned int max_show; /* 打印的allocstack最大数量 */
 } DBGCFG;
+
+typedef struct __allocstack_queue {
+	struct list_head list;
+	unsigned int qlen;
+} ALLOCSTACK_QUEUE;
 /****************************************************************************************************/
 /*                                           VARIABLES                                              */
 /****************************************************************************************************/
 static struct proc_dir_entry *g_proc_root_dir;
 static DBGCFG g_config = {
-	.enable = false,
+	.enable = true,
 	.save_allstack = false,
-	.thresh = 10
+	.thresh = 10,
+	.max_show = 1000
 };
 
 DEFINE_SPINLOCK(g_lock);
-DECLARE_HASHTABLE(g_traceobj_table, 12);
-DECLARE_HASHTABLE(g_allocstack_table, 12);
-static struct list_head g_allocstack_list;
-
+DECLARE_HASHTABLE(g_traceobj_table, TRACEOBJ_HTABLE_SIZE);
+DECLARE_HASHTABLE(g_allocstack_table, ALLOCSTACK_HTABLE_SIZE);
+static ALLOCSTACK_QUEUE g_allocstack_quene;
+bool g_initialized_flag = false;
+static unsigned int g_hold_allocstack = 0;
+static unsigned int g_hold_object = 0;
+static unsigned long g_hold_object_size = 0;
 /* alloccation caches for internal data */
 static struct kmem_cache *allocstack_cache;
 static struct kmem_cache *traceobj_cache;
@@ -132,6 +144,8 @@ static void destroy_traceobj_table(void )
 	{
 		if (NULL != traceobj)
 		{
+			g_hold_object--;
+			g_hold_object_size -= traceobj->size;
 			hash_del(&traceobj->hnode);
 			kmem_cache_free(traceobj_cache, traceobj);
 		}
@@ -156,8 +170,8 @@ static void destroy_allocstack_table(void )
         if (NULL != allocstack)
         {
             hash_del(&allocstack->hnode);
-			list_del(&allocstack->list);
             kmem_cache_free(allocstack_cache, allocstack);
+			g_hold_allocstack--;
         }
     }
 	return;
@@ -172,7 +186,6 @@ static void start_trace_obj(void)
 	destroy_allocstack_table();
 	hash_init(g_traceobj_table);
 	hash_init(g_allocstack_table);
-	INIT_LIST_HEAD(&g_allocstack_list);
 	g_config.enable = true;
 	spin_unlock_irqrestore(&g_lock, flags);
     return;
@@ -214,20 +227,35 @@ static void show_allocstack_info(void)
 {
 	ALLOCSTACK *allocstack = NULL;
 	ALLOCSTACK *tmpstack = NULL;
-	unsigned long flags;
-	
-	spin_lock_irqsave(&g_lock, flags);
-	list_sort(NULL, &g_allocstack_list, descending_by_hold);
+    struct hlist_node *tmp_hnode = NULL;
+    int bkt;
+
+	INIT_LIST_HEAD(&g_allocstack_quene.list);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
+    hash_for_each_safe(g_allocstack_table, bkt, tmp_hnode, tmpstack, allocstack, hnode)
+#else
+    hash_for_each_safe(g_allocstack_table, bkt, tmp_hnode, allocstack, hnode)
+#endif
+    {
+        if (NULL != allocstack && allocstack->hold >= g_config.thresh && g_allocstack_quene.qlen < g_config.max_show)
+        {
+			list_add_tail(&allocstack->list, &g_allocstack_quene.list);
+			g_allocstack_quene.qlen++;
+        }
+    }
+	list_sort(NULL, &g_allocstack_quene.list, descending_by_hold);
+
 	printk("=====================================================ALLOC STACK=====================================================\n");
-	list_for_each_entry_safe(allocstack, tmpstack, &g_allocstack_list, list)
+	printk("hold object=%u, hold object size=%luB, hold allocstack=%u\n", g_hold_object, g_hold_object_size, g_hold_allocstack);
+	list_for_each_entry_safe(allocstack, tmpstack, &g_allocstack_quene.list, list)
 	{
-		if (NULL != allocstack && allocstack->hold >= g_config.thresh)
+		if (NULL != allocstack)
 		{
 			__show_allocstack_info(allocstack);
+			list_del(&allocstack->list);
+			g_allocstack_quene.qlen--;
 		}
-
 	}
-	spin_unlock_irqrestore(&g_lock, flags);
 	return;
 }
 
@@ -286,6 +314,24 @@ static ssize_t proc_thresh_write(struct file *filp, const char __user *buf, size
 	return size;
 }
 
+static ssize_t proc_max_show_write(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
+{
+	char kbuf[MAX_BUFER_LEN];
+	char *pos;
+
+	memset(kbuf, 0, sizeof(kbuf));
+	if (0 != copy_from_user(kbuf, buf, size))
+	{
+		printk("copy from user failed.\n");
+		return -1;
+	}
+	kbuf[size - 1] = '\0';
+	g_config.max_show = simple_strtol(kbuf, &pos, 0);
+	printk("g_config.max_show=%u\n", g_config.max_show);
+
+	return size;
+}
+
 static ssize_t proc_save_allstack_write(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
 	char c;
@@ -325,6 +371,11 @@ static const struct file_operations proc_save_allstack = {
 	.write = proc_save_allstack_write
 };
 
+static const struct file_operations proc_max_show = {
+	.owner = THIS_MODULE,
+	.write = proc_max_show_write
+};
+
 static void init_proc(void)
 {
     g_proc_root_dir = proc_mkdir("slubdebug", NULL);
@@ -332,6 +383,7 @@ static void init_proc(void)
     proc_create("showinfo", 0, g_proc_root_dir, &proc_showinfo);
 	proc_create("threshold", 0, g_proc_root_dir, &proc_thresh);
 	proc_create("save_allstack", 0, g_proc_root_dir, &proc_save_allstack);
+	proc_create("max_show", 0, g_proc_root_dir, &proc_max_show);
     return;
 }
 
@@ -341,6 +393,7 @@ static void destroy_proc(void)
     remove_proc_entry("showinfo", g_proc_root_dir);
 	remove_proc_entry("threshold", g_proc_root_dir);
 	remove_proc_entry("save_allstack", g_proc_root_dir);
+	remove_proc_entry("max_show", g_proc_root_dir);
     remove_proc_entry("slubdebug", NULL);
     return;
 }
@@ -358,7 +411,7 @@ void trace_slub_alloc(const void *obj, size_t size, unsigned long cache_flags)
 	struct hlist_node *tmp_hnode;
 #endif
 
-	if (false == g_config.enable)
+	if (false == g_config.enable || false == g_initialized_flag)
 	{
 		return;
 	}
@@ -383,13 +436,15 @@ void trace_slub_alloc(const void *obj, size_t size, unsigned long cache_flags)
         allocstack->trace_len = trace_len;
         memcpy(allocstack->trace, trace, sizeof(trace));
         hash_add(g_allocstack_table, &allocstack->hnode, trace[trace_len - 1] + trace_len);
-		list_add_tail(&allocstack->list, &g_allocstack_list);
+		g_hold_allocstack++;
     }
 
 	traceobj->allocstack = allocstack;
     allocstack->hold++;
 	allocstack->total_alloc++;
 	allocstack->hold_size += size;
+	g_hold_object++;
+	g_hold_object_size += size;
 	hash_add(g_traceobj_table, &traceobj->hnode, traceobj->addr);
 	spin_unlock_irqrestore(&g_lock, flags);
     return;
@@ -402,7 +457,7 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	ALLOCSTACK *allocstack = NULL;
 	unsigned long flags;
 
-	if (false == g_config.enable)
+	if (false == g_config.enable || false == g_initialized_flag)
 	{
 		return;
 	}
@@ -421,14 +476,16 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	spin_lock_irqsave(&g_lock, flags);
 	allocstack->hold--;
 	allocstack->hold_size -= traceobj->size;
+	g_hold_object--;
+	g_hold_object_size -=  traceobj->size;
 	hash_del(&traceobj->hnode);
 	kmem_cache_free(traceobj_cache, traceobj);
  
 	if (0 == allocstack->hold && false == g_config.save_allstack)
 	{
 		hash_del(&allocstack->hnode);
-		list_del(&allocstack->list);
 		kmem_cache_free(allocstack_cache, allocstack);
+		g_hold_allocstack--;
 	}
 	spin_unlock_irqrestore(&g_lock, flags);
     return;
@@ -440,6 +497,11 @@ int __init slubdebug_init(void)
     init_proc();
 	allocstack_cache = KMEM_CACHE(__alloc_stack, SLAB_NOLEAKTRACE); //参考kmemleak，使用SLAB_NOLEAKTRACE标志，避免递归调用
 	traceobj_cache = KMEM_CACHE(__trace_obj, SLAB_NOLEAKTRACE);
+	if (true == g_config.enable)
+	{
+		start_trace_obj();
+	}
+	g_initialized_flag = true;
     return 0;
 }
 
