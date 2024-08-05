@@ -2,8 +2,8 @@
 
 # 编译器设置
 CC ?= gcc
-CFLAGS := -Wall -Werror -Wno-unused-value -std=c11 -g -O0 -I./include -I../../opensource/libunwind-1.5/include
-LDFLAGS := -L../../opensource/libunwind-1.5/install/lib -lunwind -lunwind-generic
+CFLAGS := -Wall -Werror -std=c11 -g -O0 -I./include -I../../opensource/libunwind-1.5/include
+LDFLAGS := -static -L../../opensource/libunwind-1.5/install/lib -lunwind -lunwind-generic
 # 源文件和目标设置
 SRCDIR := src
 OBJDIR := obj
