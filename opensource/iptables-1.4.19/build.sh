@@ -1,4 +1,10 @@
 #!/bin/sh
-mkdir -p install
-./configure --host=arm-linux-gnueabihf --prefix=$(pwd)/install --enable-static --disable-shared
-make CC=/usr/local/arm/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc -j4 V=s && make install
+CROSS=arm-linux-gnueabihf
+
+rm $(pwd)/install
+mkdir $(pwd)/install
+
+./autogen.sh
+./configure --host=$CROSS --prefix=$(pwd)/install CC=$CROSS-gcc CXX=$CROSS-g++ AR=$CROSS-ar LD=$CROSS-ld RANLIB=$CROSS-ranlib STRIP=$CROSS-stip --enable-static --disable-shared
+make V=s -j12
+make install

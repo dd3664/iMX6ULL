@@ -1,4 +1,9 @@
-mkdir -p $(pwd)/install
-./configure --host=arm-linux-gnueabihf --prefix=$(pwd)/install CC=/usr/local/arm/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
-make -j4
+#!/bin/bash
+CROSS=arm-linux-gnueabihf
+
+rm $(pwd)/install
+mkdir $(pwd)/install
+
+./configure --host=$CROSS --prefix=$(pwd)/install CC=$CROSS-gcc CXX=$CROSS-g++ AR=$CROSS-ar LD=$CROSS-ld RANLIB=$CROSS-ranlib STRIP=$CROSS-stip
+make V=s -j12
 make install
