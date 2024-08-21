@@ -12,14 +12,20 @@
 #include <linux/version.h>
 #include <linux/slab.h>
 #include <asm/uaccess.h>
+#include <linux/timekeeping.h>
+#include <linux/rtc.h>
+#include <linux/ktime.h>
 /****************************************************************************************************/
 /*                                           DEFINES                                                */
 /****************************************************************************************************/
 #define MAX_TRACE                     16
-#define MAX_BUFER_LEN                 8
+#define MAX_PROC_BUFF_LEN             8
+#define MAX_FILE_BUFF_LEN			  512
 #define TRACEOBJ_HTABLE_SIZE          16   /* 1 << TRACEOBJ_HTABLE_SIZE */
 #define ALLOCSTACK_HTABLE_SIZE        12   /* 1 << ALLOCSTACK_HTABLE_SIZE */
 #define EACH_FREESTACK_HTABLE_SIZE    3    /* 1 << EACH_FREESTACK_HTABLE_SIZE */
+#define DATA_FILE_PATH				  "/tmp/kmem_tracer_data"
+#define MAX_TIME_STR_LEN			  24
 
 typedef struct __alloc_stack {
     unsigned long trace[MAX_TRACE];
@@ -30,6 +36,7 @@ typedef struct __alloc_stack {
     struct list_head list;
     struct hlist_node hnode;
 	DECLARE_HASHTABLE(freestack, EACH_FREESTACK_HTABLE_SIZE);
+	atomic_t ref_cnt;
 } ALLOCSTACK;
 
 typedef struct __free_stack {
@@ -85,6 +92,50 @@ static struct kmem_cache *traceobj_cache;
 /****************************************************************************************************/
 /*                                       STATIC FUNCTIONS                                           */
 /****************************************************************************************************/
+static int kfprintf(struct file *fp, const char *fmt, ...)
+{
+	char buf[MAX_FILE_BUFF_LEN] = {0};
+	ssize_t size;
+	va_list args;
+
+	if (NULL == fp)
+	{
+		printk("fp is null\n");
+		return -1;
+	}
+	
+	va_start(args, fmt);
+	vsnprintf(buf, MAX_FILE_BUFF_LEN, fmt, args);
+	va_end(args);
+
+	size = kernel_write(fp, buf, strlen(buf), fp->f_pos);
+	if (size < 0)
+	{
+		printk("%s", buf);
+		return -1;
+	}
+	return 0;
+}
+
+void get_current_time(char *time_s, int len)
+{
+    struct timespec64 ts;
+    struct rtc_time tm;
+
+    ktime_get_real_ts64(&ts);
+
+    rtc_time64_to_tm(ts.tv_sec, &tm);
+
+    snprintf(time_s, len, "%04d-%02d-%02d %02d:%02d:%02d",
+            tm.tm_year + 1900,   // 年份从 1900 开始
+            tm.tm_mon + 1,        // 月份从 0 开始，故需要加 1
+            tm.tm_mday,           // 日期
+            tm.tm_hour,           // 小时
+            tm.tm_min,            // 分钟
+            tm.tm_sec);           // 秒
+	return;
+}
+
 static int __save_stack_trace(unsigned long *trace)
 {
     struct stack_trace stack_trace;
@@ -289,20 +340,35 @@ static int descending_by_hold(void *priv, struct list_head *a, struct list_head 
 	return (allocstack_b->hold - allocstack_a->hold);
 }
 
+static void show_stack_trace(struct file *fp, struct stack_trace *trace, int spaces)
+{
+	int i;
 
-static void __show_freestack_info(FREESTACK *freestack)
+	if (0 == trace->entries)
+	{
+		return;
+	}
+
+	for (i = 0; i < trace->nr_entries; i++)
+	{
+		kfprintf(fp, "%*c", 1 + spaces, ' ');
+		kfprintf(fp, "[<%p>] %pS\n", (void *) trace->entries[i], (void *) trace->entries[i]);
+	}
+}
+
+static void __show_freestack_info(struct file *fp, FREESTACK *freestack)
 {
 	struct stack_trace trace;
 
 	trace.nr_entries = freestack->trace_len;
 	trace.entries = freestack->trace;
-	printk("free counts=%u\n", freestack->total_free);
-	print_stack_trace(&trace, 4);
-	printk("\n");
+	kfprintf(fp, "free counts=%u\n", freestack->total_free);
+	show_stack_trace(fp, &trace, 4);
+	kfprintf(fp, "\n");
 	return;
 }
 
-static void __show_allocstack_info(ALLOCSTACK *allocstack)
+static void __show_allocstack_info(struct file *fp, ALLOCSTACK *allocstack)
 {
 	FREESTACK *freestack = NULL;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
@@ -314,10 +380,10 @@ static void __show_allocstack_info(ALLOCSTACK *allocstack)
 
 	trace.nr_entries = allocstack->trace_len;
 	trace.entries = allocstack->trace;
-	printk("------------------------------------------------------------------------------------------------------------------\n");
-	printk("hold counts=%u, hold size=%uB, total alloc counts=%u\n", allocstack->hold, allocstack->hold_size,  allocstack->total_alloc);
-	print_stack_trace(&trace, 4);
-	printk("\n");
+	kfprintf(fp, "------------------------------------------------------------------------------------------------------------------\n");
+	kfprintf(fp, "hold counts=%u, hold size=%uB, total alloc counts=%u\n", allocstack->hold, allocstack->hold_size,  allocstack->total_alloc);
+	show_stack_trace(fp, &trace, 4);
+	kfprintf(fp, "\n");
 	if (g_config.save_freestack)
 	{
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
@@ -328,7 +394,7 @@ static void __show_allocstack_info(ALLOCSTACK *allocstack)
 		{
 			if (NULL != freestack)
 			{
-				__show_freestack_info(freestack);
+				__show_freestack_info(fp, freestack);
 			}
 		}
 	}
@@ -341,7 +407,19 @@ static void show_allocstack_info(void)
 	ALLOCSTACK *tmpstack = NULL;
     struct hlist_node *tmp_hnode = NULL;
     int bkt;
+	struct file *fp;
+	char time_s[MAX_TIME_STR_LEN] = {0};
 
+	get_current_time(time_s, MAX_TIME_STR_LEN);
+
+	fp = filp_open(DATA_FILE_PATH, O_WRONLY | O_CREAT | O_APPEND, 0644);
+	if (IS_ERR(fp))
+	{
+		printk("Failed to open file:%s\n", DATA_FILE_PATH);
+		return;
+	}
+
+	/* 写到文件中，不能使用spin_lock_irqsave，添加引用计数机制 */
 	INIT_LIST_HEAD(&g_allocstack_quene.list);
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
     hash_for_each_safe(g_allocstack_table, bkt, tmp_hnode, tmpstack, allocstack, hnode)
@@ -351,23 +429,35 @@ static void show_allocstack_info(void)
     {
         if (NULL != allocstack && allocstack->hold >= g_config.thresh && g_allocstack_quene.qlen < g_config.max_show)
         {
+			atomic_inc(&allocstack->ref_cnt);
 			list_add_tail(&allocstack->list, &g_allocstack_quene.list);
 			g_allocstack_quene.qlen++;
         }
     }
 	list_sort(NULL, &g_allocstack_quene.list, descending_by_hold);
 
-	printk("=====================================================ALLOC STACK=====================================================\n");
-	printk("hold object=%u, hold object size=%luB, hold allocstack=%u\n", g_hold_object, g_hold_object_size, g_hold_allocstack);
+	kfprintf(fp, "=====================================================ALLOC STACK %s=====================================================\n", time_s);
+	kfprintf(fp, "hold object=%u, hold object size=%luB, hold allocstack=%u\n", g_hold_object, g_hold_object_size, g_hold_allocstack);
 	list_for_each_entry_safe(allocstack, tmpstack, &g_allocstack_quene.list, list)
 	{
 		if (NULL != allocstack)
 		{
-			__show_allocstack_info(allocstack);
+			__show_allocstack_info(fp, allocstack);
 			list_del(&allocstack->list);
 			g_allocstack_quene.qlen--;
+			atomic_dec(&allocstack->ref_cnt);
+			if (0 == atomic_read(&allocstack->ref_cnt))
+			{
+				if (g_config.save_freestack)
+				{
+					destroy_freestack_table(allocstack->freestack);
+					kmem_cache_free(allocstack_cache, allocstack);
+				}
+			}
 		}
 	}
+
+	filp_close(fp, NULL);
 	return;
 }
 
@@ -410,7 +500,7 @@ static ssize_t proc_showinfo_write(struct file *filp, const char __user *buf, si
 
 static ssize_t proc_thresh_write(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
-	char kbuf[MAX_BUFER_LEN];
+	char kbuf[MAX_PROC_BUFF_LEN];
 	char *pos;
 
 	memset(kbuf, 0, sizeof(kbuf));
@@ -466,7 +556,7 @@ static ssize_t proc_save_freestack_write(struct file *filp, const char __user *b
 
 static ssize_t proc_max_show_write(struct file *filp, const char __user *buf, size_t size, loff_t *offt)
 {
-	char kbuf[MAX_BUFER_LEN];
+	char kbuf[MAX_PROC_BUFF_LEN];
 	char *pos;
 
 	memset(kbuf, 0, sizeof(kbuf));
@@ -575,6 +665,8 @@ void trace_slub_alloc(const void *obj, size_t size, unsigned long cache_flags)
         memcpy(allocstack->trace, trace, sizeof(trace));
         hash_add(g_allocstack_table, &allocstack->hnode, trace[trace_len - 1] + trace_len);
 		hash_init(allocstack->freestack);
+		atomic_set(&allocstack->ref_cnt, 0);
+		atomic_inc(&allocstack->ref_cnt);
 		g_hold_allocstack++;
     }
 
@@ -626,12 +718,16 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	if (0 == allocstack->hold && false == g_config.save_allstack)
 	{
 		hash_del(&allocstack->hnode);
-		if (g_config.save_freestack)
-		{
-			destroy_freestack_table(allocstack->freestack);
-		}
-		kmem_cache_free(allocstack_cache, allocstack);
 		g_hold_allocstack--;
+		atomic_dec(&allocstack->ref_cnt);
+		if (0 == atomic_read(&allocstack->ref_cnt))
+		{
+			if (g_config.save_freestack)
+			{
+				destroy_freestack_table(allocstack->freestack);
+			}
+			kmem_cache_free(allocstack_cache, allocstack);
+		}
 	}
 	else if (g_config.save_freestack)
 	{
