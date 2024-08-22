@@ -117,7 +117,7 @@ static int kfprintf(struct file *fp, const char *fmt, ...)
 	return 0;
 }
 
-void get_current_time(char *time_s, int len)
+static void get_current_time(char *time_s, int len)
 {
     struct timespec64 ts;
     struct rtc_time tm;
