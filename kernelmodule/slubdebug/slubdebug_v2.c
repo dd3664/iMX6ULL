@@ -72,9 +72,9 @@ static struct proc_dir_entry *g_proc_root_dir;
 static DBGCFG g_config = {
 	.enable = true,
 	.save_allstack = false,
-	.save_freestack = false,
+	.save_freestack = true,
 	.thresh = 10,
-	.max_show = 1000
+	.max_show = 5000
 };
 
 DEFINE_SPINLOCK(g_lock);
@@ -148,10 +148,32 @@ static int __save_stack_trace(unsigned long *trace)
     return stack_trace.nr_entries;
 }
 
-static ALLOCSTACK *find_allocstack(unsigned long *trace, unsigned int trace_len)
+static unsigned long cal_stacktrace_hkey(unsigned long *trace, unsigned int trace_len)
+{
+	unsigned long hkey;
+
+	if (0 == trace_len)
+	{
+		hkey = 0;	
+	}
+	else if (1 == trace_len)
+	{
+		hkey = trace[0];
+	}
+	else if (2 == trace_len)
+	{
+		hkey = trace[0] + trace[1];
+	}
+	else
+	{
+		hkey = trace[1] + trace[trace_len - 1] + trace[trace_len / 2] + trace_len; /* trace[0]通常均为kmem_cache_alloc, 从trace[1]算起 */
+	}
+	return hkey;
+}
+
+static ALLOCSTACK *find_allocstack(unsigned long *trace, unsigned long hkey)
 {
 	ALLOCSTACK *allocstack = NULL;
-	unsigned long hkey = trace[trace_len - 1] + trace_len;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
 	struct hlist_node *tmp_hnode;
 #endif
@@ -191,12 +213,11 @@ static TRACEOBJ *find_traceobj(const void *obj)
 }
 
 #if  LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
-#define find_freestack(htable, trace, trace_len, freestack) \
+#define find_freestack(htable, trace, hkey, freestack) \
 do \
 { \
 	FREESTACK *tmpstack = NULL; \
 	struct hlist_node *tmp_hnode; \
-	unsigned long hkey = trace[trace_len - 1] + trace_len; \
     hash_for_each_possible(htable, tmpstack, tmp_hnode, hnode, hkey) \
 	{ \
         if (0 == memcmp(tmpstack->trace, trace, MAX_TRACE)) \
@@ -224,11 +245,10 @@ do \
 	} \
 } while (0);
 #else
-#define find_freestack(htable, trace, trace_len, freestack) \
+#define find_freestack(htable, trace, hkey, freestack) \
 do \
 { \
 	FREESTACK *tmpstack = NULL; \
-	unsigned long hkey = trace[trace_len - 1] + trace_len; \
     hash_for_each_possible(htable, tmpstack, hnode, hkey) \
 	{ \
         if (0 == memcmp(tmpstack->trace, trace, MAX_TRACE)) \
@@ -638,6 +658,7 @@ void trace_slub_alloc(const void *obj, size_t size, unsigned long cache_flags)
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,38,0)
 	struct hlist_node *tmp_hnode;
 #endif
+	unsigned long st_hkey = 0;
 
 	if (false == g_config.enable || false == g_initialized_flag)
 	{
@@ -654,16 +675,17 @@ void trace_slub_alloc(const void *obj, size_t size, unsigned long cache_flags)
     traceobj->addr = (unsigned long)obj;
 	traceobj->size = size;
     trace_len = __save_stack_trace(trace);
+	st_hkey = cal_stacktrace_hkey(trace, trace_len);
 
 	spin_lock_irqsave(&g_lock, flags);
-	allocstack = find_allocstack(trace, trace_len);
+	allocstack = find_allocstack(trace, st_hkey);
     if (NULL == allocstack)
     {
         allocstack = kmem_cache_alloc(allocstack_cache, GFP_ATOMIC);
 		memset(allocstack, 0, sizeof(ALLOCSTACK));
         allocstack->trace_len = trace_len;
         memcpy(allocstack->trace, trace, sizeof(trace));
-        hash_add(g_allocstack_table, &allocstack->hnode, trace[trace_len - 1] + trace_len);
+        hash_add(g_allocstack_table, &allocstack->hnode, st_hkey);
 		hash_init(allocstack->freestack);
 		atomic_set(&allocstack->ref_cnt, 0);
 		atomic_inc(&allocstack->ref_cnt);
@@ -690,6 +712,7 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	unsigned long trace[MAX_TRACE] = {0};
 	unsigned int trace_len = 0;
 	unsigned long flags;
+	unsigned long st_hkey;
 
 	if (false == g_config.enable || false == g_initialized_flag)
 	{
@@ -732,14 +755,15 @@ void trace_slub_free(const void *obj, unsigned long cache_flags)
 	else if (g_config.save_freestack)
 	{
 		trace_len = __save_stack_trace(trace);
-		find_freestack(allocstack->freestack, trace, trace_len, freestack);
+		st_hkey = cal_stacktrace_hkey(trace, trace_len);
+		find_freestack(allocstack->freestack, trace, st_hkey, freestack);
 		if (NULL == freestack)
 		{	
 			freestack = kmem_cache_alloc(freestack_cache, GFP_ATOMIC);
 			memset(freestack, 0, sizeof(FREESTACK));
 			freestack->trace_len = trace_len;
 			memcpy(freestack->trace, trace, sizeof(trace));
-			hash_add(allocstack->freestack, &freestack->hnode, trace[trace_len - 1] + trace_len);
+			hash_add(allocstack->freestack, &freestack->hnode, st_hkey);
 		}
 		freestack->total_free++;
 	}
