@@ -1,0 +1,5 @@
+用法示例:
+LD_PRELOAD=/lib/libumem_tracer.so /usr/sbin/umt_test &
+umt_cli -p [pid] -s
+
+部分架构需要-g编译选项才能展开完整堆栈
