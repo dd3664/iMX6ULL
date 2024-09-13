@@ -2,3 +2,4 @@ libunwind使用示例
 arm架构使用libunwind-1.5版本
 aarch64架构使用libunwind-1.6版本
 否则会有编译错误，或展开的堆栈有问题
+实测arm需添加-g的编译选项，否则仅能获取到最后一个栈帧；aarch64可不加-g选项也能获取完整栈帧
