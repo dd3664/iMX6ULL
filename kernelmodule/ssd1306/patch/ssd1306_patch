@@ -1,0 +1,16 @@
+diff --git a/arch/arm/boot/dts/imx6ull-14x14-evk.dts b/arch/arm/boot/dts/imx6ull-14x14-evk.dts
+index 5a189ca..fe29990 100644
+--- a/arch/arm/boot/dts/imx6ull-14x14-evk.dts
++++ b/arch/arm/boot/dts/imx6ull-14x14-evk.dts
+@@ -421,6 +421,11 @@
+                 reg = <0x1e>;
+         };
+ 
++	ssd1306@78 {
++				compatible = "ssd1306";
++				reg = <0x3c>;
++		};
++
+ 	eeprom1: eeprom@50 {
+                 compatible = "atmel,24c02";
+                 reg = <0x50>;
