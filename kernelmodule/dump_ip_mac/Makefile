@@ -1,7 +1,7 @@
 # Makefile for kernel module
 
 # Name of the kernel module
-MODULE_NAME := print_ip_mac
+MODULE_NAME := dump_ip_mac
 
 # Src
 SRC_FILES := 
