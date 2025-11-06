@@ -25,11 +25,6 @@ CFLAGS += $(EXTRA_CFLAGS)
 CFLAGS += -I$(abspath ../src)
 CFLAGS += -I$(abspath ../src/utils)
 
-CFLAGS += -I../../openssl-1.1.1t/install/include
-LIBS += -L../../openssl-1.1.1t/install/lib
-CFLAGS += -I../../libnl-3.2.25/install/include/libnl3
-LIBS += -L../../libnl-3.2.25/install/lib
-
 export BINDIR ?= /usr/local/bin/
 
 -include .config

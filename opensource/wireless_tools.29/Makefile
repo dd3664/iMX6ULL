@@ -9,10 +9,10 @@ ifndef PREFIX
 endif
 
 ## Compiler to use (modify this for cross compile).
-CC = arm-linux-gnueabihf-gcc
+CC = gcc
 ## Other tools you need to modify for cross compile (static lib only).
-AR = arm-linux-gnueabihf-gcc
-RANLIB = arm-linux-gnueabihf-gcc
+AR = ar
+RANLIB = ranlib
 
 ## Uncomment this to build tools using static version of the library.
 ## Mostly useful for embedded platforms without ldd, or to create
