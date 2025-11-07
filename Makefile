@@ -1,6 +1,4 @@
-include common.mk
-
-TOPDIR:=$(shell pwd)/..
+TOPDIR:=$(shell pwd)
 BUILD_DIR:=$(TOPDIR)/build_dir
 OUTPUT_DIR:=$(TOPDIR)/output
 TOOLCHAIN_SOURCE_DIR:=$(TOPDIR)/toolchains
@@ -14,11 +12,13 @@ MAKE:=$(CROSS_MAKE)
 
 export PATH:=$(PATH):$(TOOLCHAIN_STAGING_DIR)/$(TOOLCHAIN)/bin
 
+
 all: prepare bsp opensource rootfs
 
-include bsp.mk
-include rootfs.mk
-include opensource.mk
+include $(TOPDIR)/include/common.mk
+include $(TOPDIR)/include/bsp.mk
+include $(TOPDIR)/include/rootfs.mk
+include $(TOPDIR)/include/opensource.mk
 
 prepare:
 	[ -d $(BUILD_DIR) ] || mkdir -p $(BUILD_DIR)
@@ -28,4 +28,5 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 .PHONY: all
+
 
