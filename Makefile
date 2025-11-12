@@ -4,21 +4,23 @@ OUTPUT_DIR:=$(TOPDIR)/output
 TOOLCHAIN_SOURCE_DIR:=$(TOPDIR)/toolchains
 TOOLCHAIN:=gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf
 TOOLCHAIN_STAGING_DIR:=$(BUILD_DIR)/toolchain
+TOOLS_DIR:=$(TOPDIR)/tools
 TARGET:=arm-linux-gnueabihf
 TARGET_CROSS:=$(TARGET)-
 ARCH:=arm
 CROSS_MAKE:=make ARCH=$(ARCH) CROSS_COMPILE=$(TARGET_CROSS)
 MAKE:=$(CROSS_MAKE)
 
-export PATH:=$(PATH):$(TOOLCHAIN_STAGING_DIR)/$(TOOLCHAIN)/bin
+export PATH:=$(PATH):$(TOOLCHAIN_STAGING_DIR)/$(TOOLCHAIN)/bin:$(TOOLS_DIR)
 
 
-all: prepare bsp opensource rootfs
+all: prepare bsp opensource rootfs image
 
 include $(TOPDIR)/include/common.mk
 include $(TOPDIR)/include/bsp.mk
 include $(TOPDIR)/include/rootfs.mk
 include $(TOPDIR)/include/opensource.mk
+include $(TOPDIR)/include/image.mk
 
 prepare:
 	[ -d $(BUILD_DIR) ] || mkdir -p $(BUILD_DIR)
