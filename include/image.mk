@@ -1,8 +1,13 @@
 IMAGE:=imx6ull.img
 IMAGE_DIR:=$(OUTPUT_DIR)/image
 
-BOOTFS=imx6ull.boot
-ROOTFS=rootfs.ext4
+#------------------------------分区信息------------------------------------
+#----分区序号----起始地址--------大小----------内容------------文件系统----
+#		1			0			 10M		 u-boot.imx			无	
+#		2		10x1024x1024	 500M			dtb				fat
+#		3		600x1024x1024	 200M		   rootfs			ext4
+BOOTFS:=imx6ull.boot
+ROOTFS:=rootfs.ext4
 BOOTFS_OFFSET=10240#单位:KB,即10MB
 ROOTFS_OFFSET=614400#单位KB,即600MB
 BOOTFS_SIZE=512000#单位:KB,即500MB
