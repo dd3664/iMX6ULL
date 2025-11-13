@@ -24,7 +24,7 @@ busybox-compile: busybox-prepare
 		mkdir -p rootfs && \
 		$(MAKE) install
 busybox-install: busybox-compile
-	cp -rf $(OPENSOURCE_BUILD_DIR)/$(BUSYBOX)/rootfs $(BUILD_DIR)/	
+	cp -rf $(OPENSOURCE_BUILD_DIR)/$(BUSYBOX)/rootfs/* $(STAGING_ROOTFS)/	
 busybox-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(BUSYBOX)
 busybox-rebuild: busybox-clean busybox-install
@@ -39,7 +39,7 @@ iptables-compile: iptables-prepare
 		$(MAKE)  V=s && \
 		$(MAKE) install
 iptables-install: iptables-compile
-	cp -rf $(OPENSOURCE_BUILD_DIR)/$(IPTABLES)/install/sbin/* $(ROOTFS_DIR)/sbin/
+	cp -rf $(OPENSOURCE_BUILD_DIR)/$(IPTABLES)/install/sbin/* $(STAGING_ROOTFS)/sbin/
 iptables-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(IPTABLES)
 iptables-rebuild: iptables-clean iptables-install
@@ -53,7 +53,7 @@ libnl-compile: libnl-prepare
 		$(MAKE) V=s && \
 		$(MAKE) install
 libnl-install: libnl-compile
-	cp -rf $(OPENSOURCE_BUILD_DIR)/$(LIBNL)/install/lib/* $(ROOTFS_DIR)/lib/
+	cp -rf $(OPENSOURCE_BUILD_DIR)/$(LIBNL)/install/lib/* $(STAGING_ROOTFS)/lib/
 libnl-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(LIBNL)
 libnl-rebuild: libnl-clean libnl-install
@@ -68,8 +68,8 @@ openssl-compile: openssl-prepare
 		$(MAKE) V=s && \
 		$(MAKE) install
 openssl-install: openssl-compile
-	cp $(OPENSOURCE_BUILD_DIR)/$(OPENSSL)/install/bin/openssl $(ROOTFS_DIR)/lib/
-	cp -rf $(OPENSOURCE_BUILD_DIR)/$(OPENSSL)/install/lib/* $(ROOTFS_DIR)/lib/
+	cp $(OPENSOURCE_BUILD_DIR)/$(OPENSSL)/install/bin/openssl $(STAGING_ROOTFS)/lib/
+	cp -rf $(OPENSOURCE_BUILD_DIR)/$(OPENSSL)/install/lib/* $(STAGING_ROOTFS)/lib/
 openssl-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(OPENSSL)
 openssl-rebuild: openssl-clean openssl-install
@@ -83,9 +83,9 @@ wpa_supplicant-compile: wpa_supplicant-prepare
 		EXTRA_CFLAGS="-I$(OPENSOURCE_BUILD_DIR)/$(LIBNL)/install/include/libnl3 -I$(OPENSOURCE_BUILD_DIR)/$(OPENSSL)/install/include" \
 		LDFLAGS="-L$(OPENSOURCE_BUILD_DIR)/$(LIBNL)/install/lib -L$(OPENSOURCE_BUILD_DIR)/$(OPENSSL)/install/lib -lssl -lcrypto"
 wpa_supplicant-install: wpa_supplicant-compile
-	cp $(OPENSOURCE_BUILD_DIR)/$(WPA_SUPPLICANT)/wpa_supplicant/wpa_supplicant $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WPA_SUPPLICANT)/wpa_supplicant/wpa_cli $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WPA_SUPPLICANT)/wpa_supplicant/wpa_passphrase $(ROOTFS_DIR)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WPA_SUPPLICANT)/wpa_supplicant/wpa_supplicant $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WPA_SUPPLICANT)/wpa_supplicant/wpa_cli $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WPA_SUPPLICANT)/wpa_supplicant/wpa_passphrase $(STAGING_ROOTFS)/sbin/
 wpa_supplicant-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(WPA_SUPPLICANT)
 wpa_supplicant-rebuild: wpa_supplicant-clean wpa_supplicant-install
@@ -99,8 +99,8 @@ hostapd-compile: hostapd-prepare
 		EXTRA_CFLAGS="-I$(OPENSOURCE_BUILD_DIR)/$(LIBNL)/install/include/libnl3 -I$(OPENSOURCE_BUILD_DIR)/$(OPENSSL)/install/include" \
 		LDFLAGS="-L$(OPENSOURCE_BUILD_DIR)/$(LIBNL)/install/lib -L$(OPENSOURCE_BUILD_DIR)/$(OPENSSL)/install/lib -lssl -lcrypto"
 hostapd-install: hostapd-compile
-	cp $(OPENSOURCE_BUILD_DIR)/$(HOSTAPD)/hostapd/hostapd $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(HOSTAPD)/hostapd/hostapd_cli $(ROOTFS_DIR)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(HOSTAPD)/hostapd/hostapd $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(HOSTAPD)/hostapd/hostapd_cli $(STAGING_ROOTFS)/sbin/
 hostapd-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(HOSTAPD)
 hostapd-rebuild: hostapd-clean hostapd-install
@@ -113,14 +113,14 @@ wireless_tools-compile: wireless_tools-prepare
 		AR=$(TARGET_CROSS)ar \
 		RANLIB=$(TARGET_CROSS)ranlib
 wireless_tools-install: wireless_tools-compile
-	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/ifrename $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwconfig $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwevent $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwgetid $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwlist $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwpriv $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwspy $(ROOTFS_DIR)/sbin/
-	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/libiw.so.29 $(ROOTFS_DIR)/lib/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/ifrename $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwconfig $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwevent $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwgetid $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwlist $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwpriv $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/iwspy $(STAGING_ROOTFS)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)/libiw.so.29 $(STAGING_ROOTFS)/lib/
 wireless_tools-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(WIRELESS_TOOLS)
 wireless_tools-rebuild: wireless_tools-clean wireless_tools-install
@@ -135,7 +135,7 @@ libunwind-compile: libunwind-prepare
 		$(MAKE) V=s && \
 		$(MAKE) install
 libunwind-install: libunwind-compile
-	cp -rf $(OPENSOURCE_BUILD_DIR)/$(LIBUNWIND)/install/lib/* $(ROOTFS_DIR)/lib/
+	cp -rf $(OPENSOURCE_BUILD_DIR)/$(LIBUNWIND)/install/lib/* $(STAGING_ROOTFS)/lib/
 libunwind-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(LIBUNWIND)
 libunwind-rebuild: libunwind-clean libunwind-install
@@ -148,7 +148,7 @@ rpcapd-linux-compile: rpcapd-linux-prepare
 	$(MAKE) -C $(OPENSOURCE_BUILD_DIR)/$(RPCAPD-LINUX)/libpcap
 	$(MAKE) -C $(OPENSOURCE_BUILD_DIR)/$(RPCAPD-LINUX) CC=$(TARGET_CROSS)gcc
 rpcapd-linux-install: rpcapd-linux-compile
-	cp $(OPENSOURCE_BUILD_DIR)/$(RPCAPD-LINUX)/rpcapd $(ROOTFS_DIR)/sbin/
+	cp $(OPENSOURCE_BUILD_DIR)/$(RPCAPD-LINUX)/rpcapd $(STAGING_ROOTFS)/sbin/
 rpcapd-linux-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(RPCAPD-LIBNL)
 rpcapd-linux-rebuild: rpcapd-linux-clean rpcapd-linux-install	
