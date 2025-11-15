@@ -25,6 +25,9 @@ busybox-compile: busybox-prepare
 		$(MAKE) install
 busybox-install: busybox-compile
 	cp -rf $(OPENSOURCE_BUILD_DIR)/$(BUSYBOX)/rootfs/* $(STAGING_ROOTFS)/	
+	mkdir -p $(STAGING_ROOTFS)/usr/share/udhcpc/
+	cp $(OPENSOURCE_BUILD_DIR)/$(BUSYBOX)/examples/udhcp/simple.script $(STAGING_ROOTFS)/usr/share/udhcpc/default.script
+	chmod 777 $(STAGING_ROOTFS)/usr/share/udhcpc/default.script
 busybox-clean:
 	rm -rf $(OPENSOURCE_BUILD_DIR)/$(BUSYBOX)
 busybox-rebuild: busybox-clean busybox-install
